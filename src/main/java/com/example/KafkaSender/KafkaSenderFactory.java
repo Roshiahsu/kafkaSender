@@ -1,34 +1,46 @@
 package com.example.KafkaSender;
 
-import com.example.KafkaSender.common.KafkaSenderConstants;
 import com.example.KafkaSender.handler.IMQHandler;
-import com.example.KafkaSender.handler.OrderRepullHandler;
-import com.example.KafkaSender.handler.ProductRepullHandler;
-import com.example.KafkaSender.handler.UpdateProductListHandler;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.BeansException;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.ApplicationContextAware;
 import org.springframework.stereotype.Component;
 
-@Component
-public class KafkaSenderFactory {
+import java.util.HashMap;
+import java.util.Map;
 
-    @Autowired
-    private OrderRepullHandler orderRepullHandler;
-    @Autowired
-    private ProductRepullHandler productRepullHandler;
-    @Autowired
-    private UpdateProductListHandler updateProductListHandler;
+
+@Component
+public class KafkaSenderFactory implements ApplicationContextAware {
+
+    private final Map<String, IMQHandler> handlers = new HashMap<>();
+
+    /**
+     * 實現動態注入
+     *
+     * @param applicationContext the ApplicationContext object to be used by this object
+     * @throws BeansException
+     */
+    @Override
+    public void setApplicationContext(ApplicationContext applicationContext) throws BeansException {
+        Map<String, IMQHandler> handlerBeans = applicationContext.getBeansOfType(IMQHandler.class);
+        for (IMQHandler handler : handlerBeans.values()) {
+            String repullType = handler.getSupportedRepullType();
+            if (repullType != null) {
+                handlers.put(repullType, handler);
+            }
+        }
+    }
 
     public IMQHandler getKafkaSender(String repullType) {
-        switch (repullType) {
-            case KafkaSenderConstants.ORDER_REPULL:
-                return orderRepullHandler;
-            case KafkaSenderConstants.PRODUCT_REPULL:
-                return productRepullHandler;
-            case KafkaSenderConstants.ITEM_LIST_UPDATE:
-//                return updateProductListHandler;
-                //功能還不能用
-                throw new UnsupportedOperationException();
+        if (repullType == null) {
+            throw new IllegalArgumentException("repullType cannot be null");
         }
-        return null;
+        IMQHandler handler = handlers.get(repullType);
+        if (handler == null) {
+            throw new UnsupportedOperationException("Invalid repullType: " + repullType);
+        }
+        return handler;
     }
+
 }

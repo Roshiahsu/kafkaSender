@@ -1,6 +1,7 @@
 package com.example.KafkaSender.handler;
 
 import com.example.KafkaSender.common.BuEnum;
+import com.example.KafkaSender.common.KafkaSenderConstants;
 import com.example.KafkaSender.common.MPEnum;
 import com.example.KafkaSender.model.KafkaDataBaseDTO;
 import com.example.KafkaSender.model.KafkaSenderEntity;
@@ -13,7 +14,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Component
-public class UpdateProductListHandler extends AbstractKafkaHandler{
+public class UpdateProductListHandler extends AbstractKafkaHandler {
 
     @Getter
     private String msgType = "ITEM_LIST_UPDATE";
@@ -50,5 +51,10 @@ public class UpdateProductListHandler extends AbstractKafkaHandler{
             updateList.add(data);
         }
         return itemListUpdateDTO;
+    }
+
+    @Override
+    public String getSupportedRepullType() {
+        return KafkaSenderConstants.ITEM_LIST_UPDATE;
     }
 }

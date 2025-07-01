@@ -7,85 +7,35 @@ import com.example.KafkaSender.common.MPEnum;
 import com.example.KafkaSender.model.KafkaDataBaseDTO;
 import com.example.KafkaSender.model.KafkaSenderEntity;
 import com.example.KafkaSender.model.MessageDTO;
+import com.example.KafkaSender.service.KafkaConfigurationService;
 import com.example.KafkaSender.utils.CheckTopicExistence;
-import com.example.KafkaSender.utils.SenderUtils;
 import com.google.common.collect.Lists;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.SendResult;
 import org.springframework.util.concurrent.ListenableFuture;
 
-import javax.annotation.PostConstruct;
-import java.util.*;
-
-import static com.example.KafkaSender.common.KafkaSenderConstants.*;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
 
 @Slf4j
 public abstract class AbstractKafkaHandler implements IMQHandler {
     @Autowired
-    private KafkaSenderConstants kafkaSenderConstants;
-    @Autowired
-    @Qualifier("devKafkaTemplate")
-    private KafkaTemplate<String, String> devKafkaTemplate;
-
-    @Autowired
-    @Qualifier("dockerKafkaTemplate")
-    private KafkaTemplate<String, String> dockerKafkaTemplate;
-
-    @Autowired
-    @Qualifier("uatKafkaTemplate")
-    private KafkaTemplate<String, String> uatKafkaTemplate;
-
-    @Autowired
-    @Qualifier("prdKafkaTemplate")
-    private KafkaTemplate<String, String> prdKafkaTemplate;
-
-    @Autowired
     private CheckTopicExistence checkTopicExistence;
-
+    @Autowired
+    private KafkaConfigurationService kafkaConfigurationService;
     @Value("${partitionDataSize:20}")
     private Integer partitionDataSize;
-
-    @PostConstruct
-    public void init() {
-        validateKafkaTemplates();
-        validatePartitionSize();
-    }
-
-    private void validateKafkaTemplates() {
-        //init template
-        Map<String, KafkaTemplate<String, String>> templates = new HashMap<>();
-        templates.put(ENV_PRD, prdKafkaTemplate);
-        templates.put(ENV_UAT, uatKafkaTemplate);
-        templates.put(ENV_DEV, devKafkaTemplate);
-        templates.put(ENV_DOCKER, dockerKafkaTemplate);
-        //validation
-        templates.forEach((env, template) -> {
-            if (template == null) {
-                log.error("KafkaTemplate for env: {} is not initialized", env);
-                throw new IllegalStateException("KafkaTemplate initialization failed for " + env);
-            }
-        });
-    }
-    private void validatePartitionSize() {
-        if (partitionDataSize == null || partitionDataSize <= 0) {
-            log.warn("Invalid partitionDataSize: {}, resetting to default: {}", partitionDataSize, KafkaSenderConstants.DEFAULT_AND_MAX_LIMIT);
-            partitionDataSize = KafkaSenderConstants.DEFAULT_AND_MAX_LIMIT;
-        } else if (partitionDataSize > KafkaSenderConstants.DEFAULT_AND_MAX_LIMIT) {
-            log.warn("partitionDataSize {} exceeds max limit, capping at {}", partitionDataSize, KafkaSenderConstants.DEFAULT_AND_MAX_LIMIT);
-            partitionDataSize = KafkaSenderConstants.DEFAULT_AND_MAX_LIMIT;
-        }
-    }
 
     @Override
     public void send(KafkaSenderEntity entity) {
         //根據env獲取不同的kafkaTemplate
-        KafkaTemplate<String, String> kaTemplate = getTargetKafkaTemplate(entity.getEnv());
+        KafkaTemplate<String, String> kaTemplate = kafkaConfigurationService.getTargetKafkaTemplate(entity.getEnv());
         //超過fetch上限，將資料分組
         List<List<String>> dataList = initDataPartition(entity.getIds());
         //初始化kafkaMessage
@@ -100,6 +50,7 @@ public abstract class AbstractKafkaHandler implements IMQHandler {
 
     /**
      * 發送kafka
+     *
      * @param messageDTO
      * @param kaTemplate
      */
@@ -123,8 +74,9 @@ public abstract class AbstractKafkaHandler implements IMQHandler {
 
         ListenableFuture<SendResult<String, String>> send = kaTemplate.send(record);
         send.addCallback(
-                result -> log.debug("Sent message to topic: {}, offset: {}, target IP: {}",
+                result -> log.debug("Sent message to topic: {}, partition: {}, offset: {}, target IP: {}",
                         result.getRecordMetadata().topic(),
+                        result.getRecordMetadata().partition(),
                         result.getRecordMetadata().offset(),
                         targetIp),
                 ex -> log.error("Failed to send message to topic: {}, message: {}, error: {}",
@@ -161,17 +113,6 @@ public abstract class AbstractKafkaHandler implements IMQHandler {
                 Lists.partition(data, partitionDataSize) : Collections.singletonList(data);
     }
 
-    private KafkaTemplate<String, String> getTargetKafkaTemplate(String env) {
-        switch (env) {
-            case ENV_DEV: return devKafkaTemplate;
-            case ENV_UAT: return uatKafkaTemplate;
-            case ENV_PRD: return prdKafkaTemplate;
-            case ENV_DOCKER: return dockerKafkaTemplate;
-            default:
-                log.error("Unsupported env: {}", env);
-                throw new UnsupportedOperationException(SenderUtils.getUnSupportErrMsg(env));
-        }
-    }
 
     protected MessageDTO initKafkaMessage(KafkaSenderEntity entity, List<String> data) {
         log.debug("initKafkaMessage start.");
@@ -183,13 +124,13 @@ public abstract class AbstractKafkaHandler implements IMQHandler {
         messageDTO.setData(prepareKafkaData(entity, data));
         messageDTO.setTopic(initTopic(entity));
         messageDTO.setMsgType(getMsgType());
-        messageDTO.setIpAddress(kafkaSenderConstants.getIpAddress(entity.getEnv()));
+        messageDTO.setIpAddress(kafkaConfigurationService.getIpAddress(entity.getEnv())); //驗證topic是否存在
         log.debug("MessageDTO : {}", messageDTO);
         return messageDTO;
     }
 
     protected String initTopic(KafkaSenderEntity entity) {
-        return String.format(getTopic(), entity.getMp() , entity.getRegionConfig().getRegionCode());
+        return String.format(getTopic(), entity.getMp(), entity.getRegionConfig().getRegionCode());
     }
 
     /*

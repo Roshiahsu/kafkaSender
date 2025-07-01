@@ -1,6 +1,7 @@
 package com.example.KafkaSender.handler;
 
 import com.example.KafkaSender.common.BuEnum;
+import com.example.KafkaSender.common.KafkaSenderConstants;
 import com.example.KafkaSender.common.MPEnum;
 import com.example.KafkaSender.model.KafkaDataBaseDTO;
 import com.example.KafkaSender.model.KafkaSenderEntity;
@@ -35,10 +36,19 @@ public class OrderRepullHandler extends AbstractKafkaHandler {
     @Override
     protected KafkaDataBaseDTO prepareKafkaData(KafkaSenderEntity entity, List<String> ids) {
         OrderRepullDTO kafkaDataDTO = new OrderRepullDTO();
-        kafkaDataDTO.setMarketplaceEnum(entity.getMp().name());
+        String mp = entity.getMp().name();
+        if (entity.getMp().equals(MPEnum.TOKOSHOP)) {
+            mp = MPEnum.TOKOPEDIA.name();
+        }
+        kafkaDataDTO.setMarketplaceEnum(mp);
         kafkaDataDTO.setExternalOrderIds(ids);
         kafkaDataDTO.setExternalOrderIdType(entity.getRegionConfig().getExternalOrderType());
         kafkaDataDTO.setStoreCode(entity.getStoreCode());
         return kafkaDataDTO;
+    }
+
+    @Override
+    public String getSupportedRepullType() {
+        return KafkaSenderConstants.ORDER_REPULL;
     }
 }

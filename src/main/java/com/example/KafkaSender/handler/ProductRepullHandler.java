@@ -1,6 +1,7 @@
 package com.example.KafkaSender.handler;
 
 import com.example.KafkaSender.common.BuEnum;
+import com.example.KafkaSender.common.KafkaSenderConstants;
 import com.example.KafkaSender.common.MPEnum;
 import com.example.KafkaSender.model.KafkaDataBaseDTO;
 import com.example.KafkaSender.model.KafkaSenderEntity;
@@ -13,7 +14,7 @@ import java.util.List;
 @Component
 public class ProductRepullHandler extends AbstractKafkaHandler {
     @Getter
-    private String msgType = "MP_ORDER_FETCH_PRODUCT_MANUALLY";
+    private final String msgType = "MP_ORDER_FETCH_PRODUCT_MANUALLY";
 
     private final String event = "InventoryRepull";
     @Getter
@@ -35,10 +36,19 @@ public class ProductRepullHandler extends AbstractKafkaHandler {
     @Override
     protected KafkaDataBaseDTO prepareKafkaData(KafkaSenderEntity entity, List<String> ids) {
         ProductRepullDTO kafkaDataDTO = new ProductRepullDTO();
-        kafkaDataDTO.setMarketplaceEnum(entity.getMp().name());
+        String mp = entity.getMp().name();
+        if (entity.getMp().equals(MPEnum.TOKOSHOP)) {
+            mp = MPEnum.TOKOPEDIA.name();
+        }
+        kafkaDataDTO.setMarketplaceEnum(mp);
         kafkaDataDTO.setIds(ids);
         kafkaDataDTO.setProductIdType(entity.getRegionConfig().getProductIdType());
         kafkaDataDTO.setStoreCode(entity.getStoreCode());
         return kafkaDataDTO;
+    }
+
+    @Override
+    public String getSupportedRepullType() {
+        return KafkaSenderConstants.PRODUCT_REPULL;
     }
 }
